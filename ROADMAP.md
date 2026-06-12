@@ -76,6 +76,41 @@ pour entrer dans le raisonnement du modèle.
 
 ---
 
+### Skills externalisés (pattern Semantic Kernel)
+**Priorité : moyenne — évite les prompts en dur dans le code**
+
+Extraire les prompts des agents dans des fichiers versionnés (`skills/`).
+Chaque skill est un artefact indépendant : template, modèle cible, paramètres,
+critères de qualité. L'agent devient un exécuteur générique qui charge son skill
+au démarrage.
+
+Bénéfices : changer un prompt sans redéployer, versionner les itérations,
+A/B tester deux templates en parallèle.
+
+```
+skills/
+  weather-report-write/
+    v1.json   ← prompt itération 4 (15/15, actuellement en dur)
+    v2.json   ← future itération
+```
+
+```json
+{
+  "id": "weather.report.write",
+  "version": "1.0.0",
+  "model": "llama3.2:3b",
+  "num_predict": 1000,
+  "template": "Tu es un météorologue factuel..."
+}
+```
+
+- [ ] Définir le schéma JSON d'un skill (id, version, model, num_predict, template)
+- [ ] Migrer le prompt de `report-writer/index.ts` → `skills/weather-report-write/v1.json`
+- [ ] Charger le skill au démarrage de l'agent (fichier ou variable d'env `SKILL_PATH`)
+- [ ] Étendre aux futurs agents LLM sans modifier leur code
+
+---
+
 ### Persistance des tâches (Redis)
 **Priorité : basse — utile pour la stabilité long terme**
 
