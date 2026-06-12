@@ -59,6 +59,23 @@ NATS distribue nativement les messages sur plusieurs instances d'un même agent
 
 ---
 
+### Orchestration LLM dynamique (remplacement du supervisor)
+**Priorité : exploratoire — prochaine frontière agentique**
+
+Remplacer le `WeatherReportSupervisor` déterministe par un LLM planificateur
+qui décide dynamiquement quels agents appeler et dans quel ordre selon la requête.
+Les agents NATS deviennent des *tools* invocables par le LLM.
+
+Ce pattern est celui de LangGraph / AutoGen : l'orchestration sort du code
+pour entrer dans le raisonnement du modèle.
+
+- [ ] Exposer chaque agent NATS comme un tool (nom, description, schéma d'entrée/sortie)
+- [ ] Implémenter un LLM planner (Ollama + modèle function-calling, ex: `llama3.1:8b`)
+- [ ] Le planner reçoit la requête, sélectionne et séquence les agents, agrège les résultats
+- [ ] Comparer les comportements : supervisor déterministe vs planner LLM
+
+---
+
 ### Persistance des tâches (Redis)
 **Priorité : basse — utile pour la stabilité long terme**
 
