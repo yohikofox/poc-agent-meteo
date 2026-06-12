@@ -1,0 +1,20 @@
+{
+  "name": "@poc-meteo/agents",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "tsc",
+    "dev:geocoding": "ts-node src/geocoding/index.ts",
+    "dev:weather-fetch": "ts-node src/weather-fetch/index.ts",
+    "dev:weather-risk": "ts-node src/weather-risk/index.ts",
+    "dev:report-writer": "ts-node src/report-writer/index.ts",
+    "dev:quality-check": "ts-node src/quality-check/index.ts"
+  },
+  "dependencies": {
+    "nats": "^2.28.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.2"
+  }
+}

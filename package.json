@@ -1,0 +1,16 @@
+{
+  "name": "poc-agent-meteo",
+  "version": "1.0.0",
+  "description": "POC plateforme agentique météo — monorepo",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.3"
+  }
+}

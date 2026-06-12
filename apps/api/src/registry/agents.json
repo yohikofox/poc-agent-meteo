@@ -1,0 +1,37 @@
+[
+  {
+    "id": "geocoding-agent",
+    "name": "Geocoding Agent",
+    "capabilities": ["location.resolve"],
+    "natsSubject": "agents.location.resolve",
+    "type": "programmatic"
+  },
+  {
+    "id": "weather-fetch-agent",
+    "name": "Weather Fetch Agent",
+    "capabilities": ["weather.fetch"],
+    "natsSubject": "agents.weather.fetch",
+    "type": "programmatic"
+  },
+  {
+    "id": "weather-risk-analysis-agent",
+    "name": "Weather Risk Analysis Agent",
+    "capabilities": ["weather.risk-analysis"],
+    "natsSubject": "agents.weather.risk",
+    "type": "programmatic"
+  },
+  {
+    "id": "weather-report-writer-agent",
+    "name": "Weather Report Writer Agent",
+    "capabilities": ["weather.report.write"],
+    "natsSubject": "agents.report.write",
+    "type": "llm-local"
+  },
+  {
+    "id": "quality-check-agent",
+    "name": "Quality Check Agent",
+    "capabilities": ["report.quality-check"],
+    "natsSubject": "agents.report.check",
+    "type": "programmatic"
+  }
+]

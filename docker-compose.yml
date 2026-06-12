@@ -1,0 +1,141 @@
+services:
+
+  # ─── Broker NATS ──────────────────────────────────────────────────────────────
+  nats:
+    image: nats:2-alpine
+    command: ["--name", "poc-meteo", "-m", "8222"]
+    ports:
+      - "4222:4222"   # clients NATS
+      - "8222:8222"   # monitoring HTTP (optionnel)
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 3s
+    networks:
+      - poc-meteo
+
+  # ─── API Gateway + Supervisor ─────────────────────────────────────────────────
+  api:
+    build:
+      context: ./apps/api
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: "3000"
+      NATS_URL: "nats://nats:4222"
+    depends_on:
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/agents"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - poc-meteo
+
+  # ─── Front Next.js ────────────────────────────────────────────────────────────
+  web:
+    build:
+      context: ./apps/web
+    ports:
+      - "3001:3001"
+    environment:
+      API_URL: "http://api:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - poc-meteo
+
+  # ─── Agents autonomes ─────────────────────────────────────────────────────────
+  agent-geocoding:
+    build:
+      context: ./apps/agents
+      args:
+        AGENT_TYPE: geocoding
+    image: poc-meteo/agent:geocoding
+    environment:
+      NATS_URL: "nats://nats:4222"
+    depends_on:
+      nats:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - poc-meteo
+
+  agent-weather-fetch:
+    build:
+      context: ./apps/agents
+      args:
+        AGENT_TYPE: weather-fetch
+    image: poc-meteo/agent:weather-fetch
+    environment:
+      NATS_URL: "nats://nats:4222"
+    depends_on:
+      nats:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - poc-meteo
+
+  agent-weather-risk:
+    build:
+      context: ./apps/agents
+      args:
+        AGENT_TYPE: weather-risk
+    image: poc-meteo/agent:weather-risk
+    environment:
+      NATS_URL: "nats://nats:4222"
+    depends_on:
+      nats:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - poc-meteo
+
+  agent-report-writer:
+    build:
+      context: ./apps/agents
+      args:
+        AGENT_TYPE: report-writer
+    image: poc-meteo/agent:report-writer
+    environment:
+      NATS_URL: "nats://nats:4222"
+      # Ollama sur le poste hôte (Mac local ou machine Portainer)
+      # Sur Mac  : host.docker.internal est résolu automatiquement
+      # Sur Linux: extra_hosts ci-dessous mappe host-gateway → hôte
+      OLLAMA_URL: "${OLLAMA_URL:-http://host.docker.internal:11434}"
+      OLLAMA_MODEL: "${OLLAMA_MODEL:-llama3.2:3b}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      nats:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - poc-meteo
+
+  agent-quality-check:
+    build:
+      context: ./apps/agents
+      args:
+        AGENT_TYPE: quality-check
+    image: poc-meteo/agent:quality-check
+    environment:
+      NATS_URL: "nats://nats:4222"
+    depends_on:
+      nats:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - poc-meteo
+
+networks:
+  poc-meteo:
+    name: poc-meteo
