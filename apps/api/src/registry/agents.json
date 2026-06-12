@@ -33,5 +33,19 @@
     "capabilities": ["report.quality-check"],
     "natsSubject": "agents.report.check",
     "type": "programmatic"
+  },
+  {
+    "id": "itinerary-report-writer-agent",
+    "name": "Itinerary Report Writer Agent",
+    "capabilities": ["itinerary.report.write"],
+    "natsSubject": "agents.itinerary.report.write",
+    "type": "llm-local"
+  },
+  {
+    "id": "itinerary-quality-agent",
+    "name": "Itinerary Quality Agent",
+    "capabilities": ["itinerary.report.check"],
+    "natsSubject": "agents.itinerary.report.check",
+    "type": "programmatic"
   }
 ]

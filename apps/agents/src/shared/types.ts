@@ -24,3 +24,28 @@ export interface AgentResponse<T = unknown> {
   output?: T;
   reason?: string;
 }
+
+export interface WaypointResult {
+  name: string;
+  status: "success" | "degraded";
+  location?: GeoLocation;
+  weatherData?: WeatherData;
+  risks?: WeatherRisk[];
+  reason?: string;
+}
+
+export interface ItineraryReportInput {
+  waypoints: WaypointResult[];
+  retryReason?: string;
+}
+
+export interface ItineraryQualityInput {
+  report: string;
+  waypoints: WaypointResult[];
+}
+
+export interface ItineraryQualityResult {
+  valid: boolean;
+  reason?: string;
+  details: string[];
+}

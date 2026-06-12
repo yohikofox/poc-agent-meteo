@@ -4,6 +4,7 @@ import { connect } from "nats";
 import { TaskStore } from "./harness/TaskStore";
 import { AgentRegistry } from "./registry/AgentRegistry";
 import { WeatherReportOrchestrator } from "./orchestrator/WeatherReportOrchestrator";
+import { ItinerarySupervisor } from "./supervisor/ItinerarySupervisor";
 import { createRoutes } from "./api/routes";
 import { createServer } from "./api/server";
 import { logger } from "./logger";
@@ -18,8 +19,9 @@ async function main() {
   const taskStore = new TaskStore();
   const agentRegistry = new AgentRegistry();
   const orchestrator = new WeatherReportOrchestrator(nc, taskStore);
+  const itinerarySupervisor = new ItinerarySupervisor(nc, taskStore);
 
-  const router = createRoutes(orchestrator, taskStore, agentRegistry);
+  const router = createRoutes(orchestrator, itinerarySupervisor, taskStore, agentRegistry);
   const app = createServer(router);
 
   app.listen(PORT, () => {
