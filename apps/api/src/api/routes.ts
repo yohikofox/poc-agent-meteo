@@ -1,12 +1,14 @@
 import Router from "@koa/router";
 import { WeatherReportOrchestrator } from "../orchestrator/WeatherReportOrchestrator";
 import { ItinerarySupervisor } from "../supervisor/ItinerarySupervisor";
+import { WeatherPlannerExecutor } from "../planner/WeatherPlannerExecutor";
 import { TaskStore } from "../harness/TaskStore";
 import { AgentRegistry } from "../registry/AgentRegistry";
 
 export function createRoutes(
   orchestrator: WeatherReportOrchestrator,
   itinerarySupervisor: ItinerarySupervisor,
+  plannerExecutor: WeatherPlannerExecutor,
   taskStore: TaskStore,
   agentRegistry: AgentRegistry
 ): Router {
@@ -50,6 +52,31 @@ export function createRoutes(
 
     try {
       const output = await itinerarySupervisor.run({ from: body.from.trim(), to: body.to.trim() }, task.taskId, traceId);
+      taskStore.complete(task.taskId, output);
+      ctx.body = { taskId: task.taskId, ...output };
+    } catch (error) {
+      taskStore.fail(task.taskId);
+      ctx.status = 500;
+      ctx.body = {
+        error: error instanceof Error ? error.message : String(error),
+        taskId: task.taskId,
+      };
+    }
+  });
+
+  router.post("/weather-ask", async (ctx) => {
+    const body = ctx.request.body as { question?: string };
+    if (!body.question?.trim()) {
+      ctx.status = 400;
+      ctx.body = { error: "Le champ 'question' est requis" };
+      return;
+    }
+
+    const traceId = crypto.randomUUID();
+    const task = taskStore.create({ question: body.question });
+
+    try {
+      const output = await plannerExecutor.run(body.question.trim(), task.taskId, traceId);
       taskStore.complete(task.taskId, output);
       ctx.body = { taskId: task.taskId, ...output };
     } catch (error) {

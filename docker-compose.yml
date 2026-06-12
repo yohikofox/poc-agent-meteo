@@ -256,6 +256,27 @@ services:
     networks:
       - poc-meteo
 
+  agent-weather-planner:
+    build:
+      context: ./apps/agents
+      args:
+        AGENT_TYPE: weather-planner
+    image: poc-meteo/agent:weather-planner
+    environment:
+      NATS_URL: "nats://nats:4222"
+      OTEL_SERVICE_NAME: "weather-planner-agent"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger:4318"
+      OLLAMA_URL: "${OLLAMA_URL:-http://host.docker.internal:11434}"
+      OLLAMA_MODEL: "${OLLAMA_MODEL:-llama3.2:3b}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      nats:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - poc-meteo
+
 volumes:
   grafana-data:
 

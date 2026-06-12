@@ -54,5 +54,12 @@
     "capabilities": ["itinerary.report.check"],
     "natsSubject": "agents.itinerary.report.check",
     "type": "programmatic"
+  },
+  {
+    "id": "weather-planner-agent",
+    "name": "Weather Planner Agent",
+    "capabilities": ["weather.plan"],
+    "natsSubject": "agents.weather.plan",
+    "type": "llm-local"
   }
 ]
