@@ -32,7 +32,7 @@ Stack d'observabilité : **OpenTelemetry SDK Node → Jaeger** (traces) + **Pino
 
 ### Propagation de contexte cross-process
 
-Le contexte W3C TraceContext est injecté dans les headers NATS (`traceparent`) par le supervisor, puis extrait par chaque agent pour créer un span enfant :
+Le contexte W3C TraceContext est injecté dans les headers NATS (`traceparent`) par l'orchestrator, puis extrait par chaque agent pour créer un span enfant :
 
 ```
 supervisor (span parent)

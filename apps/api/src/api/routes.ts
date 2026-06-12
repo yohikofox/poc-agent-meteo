@@ -1,10 +1,10 @@
 import Router from "@koa/router";
-import { WeatherReportSupervisor } from "../supervisor/WeatherReportSupervisor";
+import { WeatherReportOrchestrator } from "../orchestrator/WeatherReportOrchestrator";
 import { TaskStore } from "../harness/TaskStore";
 import { AgentRegistry } from "../registry/AgentRegistry";
 
 export function createRoutes(
-  supervisor: WeatherReportSupervisor,
+  orchestrator: WeatherReportOrchestrator,
   taskStore: TaskStore,
   agentRegistry: AgentRegistry
 ): Router {
@@ -22,7 +22,7 @@ export function createRoutes(
     const task = taskStore.create({ location: body.location });
 
     try {
-      const output = await supervisor.run({ location: body.location }, task.taskId, traceId);
+      const output = await orchestrator.run({ location: body.location }, task.taskId, traceId);
       taskStore.complete(task.taskId, output);
       ctx.body = { taskId: task.taskId, ...output };
     } catch (error) {

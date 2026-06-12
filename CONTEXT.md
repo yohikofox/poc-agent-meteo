@@ -59,7 +59,7 @@ Clés du prompt : interdire explicitement les données absentes, imposer les 4 s
 ```
 poc-agent-meteo/
 ├── apps/
-│   ├── api/                     ← Gateway Koa + Supervisor
+│   ├── api/                     ← Gateway Koa + Orchestrator
 │   │   └── src/
 │   │       ├── index.ts         ← point d'entrée (import tracing en premier)
 │   │       ├── tracing.ts       ← OTel SDK (OTEL_SERVICE_NAME=api)
@@ -67,8 +67,8 @@ poc-agent-meteo/
 │   │       ├── api/
 │   │       │   ├── server.ts    ← Koa app
 │   │       │   └── routes.ts    ← POST /weather-report, GET /agents, GET /tasks/:id/events
-│   │       ├── supervisor/
-│   │       │   └── WeatherReportSupervisor.ts  ← nc.request() × 5, spans OTel
+│   │       ├── orchestrator/
+│   │       │   └── WeatherReportOrchestrator.ts  ← nc.request() × 5, spans OTel
 │   │       ├── harness/
 │   │       │   └── TaskStore.ts ← in-memory, events par tâche
 │   │       ├── registry/

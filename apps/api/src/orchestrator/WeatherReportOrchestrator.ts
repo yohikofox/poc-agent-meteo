@@ -40,13 +40,13 @@ export interface WeatherReportOutput {
   traceId: string;
 }
 
-const tracer = trace.getTracer("supervisor");
+const tracer = trace.getTracer("orchestrator");
 
 const natsHeaderSetter = {
   set: (carrier: MsgHdrs, key: string, value: string) => carrier.set(key, value),
 };
 
-export class WeatherReportSupervisor {
+export class WeatherReportOrchestrator {
   private sc = StringCodec();
 
   constructor(private nc: NatsConnection, private taskStore: TaskStore) {}

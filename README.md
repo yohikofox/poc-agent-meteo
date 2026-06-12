@@ -83,7 +83,7 @@ OLLAMA_MODEL=llama3.2:3b
 | Service | URL | Description |
 |---------|-----|-------------|
 | Web (Next.js) | http://localhost:3001 | Interface utilisateur |
-| API (Koa) | http://localhost:3000 | Gateway HTTP + Supervisor |
+| API (Koa) | http://localhost:3000 | Gateway HTTP + Orchestrator |
 | NATS | nats://localhost:4222 | Message broker |
 | NATS monitoring | http://localhost:8222 | Métriques NATS |
 | Jaeger | http://localhost:16686 | Traces distribuées |
@@ -96,7 +96,7 @@ OLLAMA_MODEL=llama3.2:3b
 sequenceDiagram
     participant U as Utilisateur
     participant W as Web
-    participant A as API / Supervisor
+    participant A as API / Orchestrator
     participant N as NATS
     participant G as geocoding-agent
     participant WF as weather-fetch-agent
@@ -130,7 +130,7 @@ sequenceDiagram
 ```
 poc-agent-meteo/
 ├── apps/
-│   ├── api/          ← Gateway Koa + Supervisor NATS
+│   ├── api/          ← Gateway Koa + Orchestrator NATS
 │   ├── agents/       ← 5 agents autonomes (1 build, 5 containers)
 │   └── web/          ← Next.js 15 + Shadcn + Tailwind v4
 ├── config/

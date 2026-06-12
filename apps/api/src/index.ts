@@ -3,7 +3,7 @@ import "dotenv/config";
 import { connect } from "nats";
 import { TaskStore } from "./harness/TaskStore";
 import { AgentRegistry } from "./registry/AgentRegistry";
-import { WeatherReportSupervisor } from "./supervisor/WeatherReportSupervisor";
+import { WeatherReportOrchestrator } from "./orchestrator/WeatherReportOrchestrator";
 import { createRoutes } from "./api/routes";
 import { createServer } from "./api/server";
 import { logger } from "./logger";
@@ -17,9 +17,9 @@ async function main() {
 
   const taskStore = new TaskStore();
   const agentRegistry = new AgentRegistry();
-  const supervisor = new WeatherReportSupervisor(nc, taskStore);
+  const orchestrator = new WeatherReportOrchestrator(nc, taskStore);
 
-  const router = createRoutes(supervisor, taskStore, agentRegistry);
+  const router = createRoutes(orchestrator, taskStore, agentRegistry);
   const app = createServer(router);
 
   app.listen(PORT, () => {

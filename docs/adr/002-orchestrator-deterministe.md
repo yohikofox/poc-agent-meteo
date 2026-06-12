@@ -1,4 +1,4 @@
-# ADR-002 — Supervisor déterministe (vs LLM planner)
+# ADR-002 — Orchestrator déterministe (vs LLM planner)
 
 **Statut** : Accepté  
 **Date** : 2026-06
@@ -9,16 +9,16 @@
 
 Il faut un mécanisme pour orchestrer les 5 agents dans le bon ordre et propager les données entre eux. Deux approches ont été évaluées :
 
-1. **Supervisor déterministe** : code TypeScript qui appelle les agents dans un ordre fixe.
+1. **Orchestrator déterministe** : code TypeScript qui appelle les agents dans un ordre fixe.
 2. **LLM planner** : un modèle de langage décide dynamiquement quels agents appeler et dans quel ordre.
 
 ## Décision
 
-Utiliser un **supervisor déterministe** (`WeatherReportSupervisor.ts`).
+Utiliser un **orchestrator déterministe** (`WeatherReportOrchestrator.ts`).
 
 ## Justification
 
-**Avantages du supervisor déterministe pour un POC :**
+**Avantages du orchestrator déterministe pour un POC :**
 - Comportement prévisible et reproductible à chaque exécution
 - Erreurs faciles à localiser (stack trace claire)
 - Pas de dépendance à un modèle function-calling (llama3.2:3b n'est pas optimisé pour ça)
@@ -32,9 +32,9 @@ Utiliser un **supervisor déterministe** (`WeatherReportSupervisor.ts`).
 ## Conséquences
 
 - L'ordre d'exécution est fixé dans le code : geocoding → weather-fetch → weather-risk → report-writer → quality-check.
-- Ajouter un agent nécessite de modifier `WeatherReportSupervisor.ts`.
+- Ajouter un agent nécessite de modifier `WeatherReportOrchestrator.ts`.
 - Le LLM planner reste en roadmap (priorité exploratoire) pour démontrer l'orchestration dynamique.
 
 ## Évolution prévue
 
-Voir `ROADMAP.md` — item "Orchestration LLM dynamique" : exposer chaque agent NATS comme un tool invocable par le LLM, et remplacer le supervisor par un planner Ollama.
+Voir `ROADMAP.md` — item "Orchestration LLM dynamique" : exposer chaque agent NATS comme un tool invocable par le LLM, et remplacer l'orchestrator par un planner Ollama.

@@ -90,7 +90,7 @@ Types possibles : `"programmatic"` ou `"llm-local"`.
 
 ### 3. Appeler l'agent depuis le Supervisor
 
-Dans `apps/api/src/supervisor/WeatherReportSupervisor.ts`, méthode `run()` :
+Dans `apps/api/src/orchestrator/WeatherReportOrchestrator.ts`, méthode `run()` :
 
 ```typescript
 const monResult = await this.request<MonType>(
