@@ -1,7 +1,11 @@
+export type EventType = "started" | "completed" | "failed" | "decision" | "retry" | "degraded";
+export type EventSource = "agent" | "orchestrator" | "supervisor" | "planner";
+
 export interface TaskEvent {
   timestamp: string;
   agentId: string;
-  type: "started" | "completed" | "failed";
+  source: EventSource;
+  type: EventType;
   message: string;
   output?: unknown;
 }

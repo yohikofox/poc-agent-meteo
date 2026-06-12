@@ -101,8 +101,8 @@ export class WeatherReportOrchestrator {
     });
   }
 
-  private pushEvent(taskId: string, agentId: string, type: TaskEvent["type"], message: string, output?: unknown) {
-    this.taskStore.addEvent(taskId, { timestamp: new Date().toISOString(), agentId, type, message, output });
+  private pushEvent(taskId: string, agentId: string, type: TaskEvent["type"], message: string, output?: unknown, source: TaskEvent["source"] = "agent") {
+    this.taskStore.addEvent(taskId, { timestamp: new Date().toISOString(), agentId, type, message, output, source });
   }
 
   async run(input: { location: string }, taskId: string, traceId: string): Promise<WeatherReportOutput> {
@@ -111,6 +111,13 @@ export class WeatherReportOrchestrator {
       logger.info({ ...traceCtx(), location: input.location, taskId }, "Rapport météo démarré");
 
       try {
+        this.pushEvent(
+          taskId, "weather-orchestrator", "decision",
+          "Pipeline séquentiel démarré : geocoding → weather-fetch → risk → report-writer → quality-check",
+          { location: input.location, sequence: ["geocoding-agent", "weather-fetch-agent", "weather-risk-analysis-agent", "weather-report-writer-agent", "quality-check-agent"] },
+          "orchestrator"
+        );
+
         const geoResult = await this.request<GeoLocation>(
           taskId, "geocoding-agent", "Geocoding Agent", "agents.location.resolve", { name: input.location }
         );
@@ -130,8 +137,16 @@ export class WeatherReportOrchestrator {
         );
         if (reportResult.status !== "success" || !reportResult.output) throw new Error(reportResult.reason ?? "Génération du rapport échouée");
 
-        await this.request(
+        const qualityResult = await this.request<{ passed: boolean; score: number; details: string[] }>(
           taskId, "quality-check-agent", "Quality Check Agent", "agents.report.check", reportResult.output
+        );
+        this.pushEvent(
+          taskId, "weather-orchestrator", "decision",
+          qualityResult.output?.passed
+            ? `Contrôle qualité : ${qualityResult.output.score}/4 sections — rapport accepté`
+            : `Contrôle qualité : ${qualityResult.output?.score ?? "?"}/4 sections — rapport retourné sans correction (orchestrateur déterministe)`,
+          { score: qualityResult.output?.score, details: qualityResult.output?.details },
+          "orchestrator"
         );
 
         logger.info({ ...traceCtx(), location: input.location, taskId }, "Rapport météo terminé");

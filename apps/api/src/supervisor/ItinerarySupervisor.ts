@@ -118,8 +118,12 @@ export class ItinerarySupervisor {
     });
   }
 
-  private pushEvent(taskId: string, agentId: string, type: TaskEvent["type"], message: string, output?: unknown) {
-    this.taskStore.addEvent(taskId, { timestamp: new Date().toISOString(), agentId, type, message, output });
+  private pushEvent(taskId: string, agentId: string, type: TaskEvent["type"], message: string, output?: unknown, source: TaskEvent["source"] = "agent") {
+    this.taskStore.addEvent(taskId, { timestamp: new Date().toISOString(), agentId, type, message, output, source });
+  }
+
+  private decide(taskId: string, message: string, output?: unknown) {
+    this.pushEvent(taskId, "itinerary-supervisor", "decision", message, output, "supervisor");
   }
 
   private async processWaypoint(taskId: string, name: string): Promise<WaypointResult> {
@@ -169,6 +173,11 @@ export class ItinerarySupervisor {
         span.setAttribute("waypoints.count", waypoints.length);
         logger.info({ ...traceCtx(), waypoints }, "Itinéraire planifié");
 
+        this.decide(taskId,
+          `Itinéraire planifié par LLM : ${waypoints.join(" → ")}`,
+          { waypoints, strategy: "parallel-allSettled-with-retry" }
+        );
+
         // 2. Traiter tous les waypoints en parallèle — allSettled ne fail-fast pas
         const settled = await Promise.allSettled(
           waypoints.map((name) => this.processWaypoint(taskId, name))
@@ -180,13 +189,24 @@ export class ItinerarySupervisor {
             if (result.status === "fulfilled") return result.value;
 
             const name = waypoints[i];
-            logger.warn({ ...traceCtx(), waypoint: name, err: String(result.reason) }, "Waypoint échoué — retry");
+            const initialReason = result.reason instanceof Error ? result.reason.message : String(result.reason);
+            logger.warn({ ...traceCtx(), waypoint: name, err: initialReason }, "Waypoint échoué — retry");
+            this.pushEvent(taskId, "itinerary-supervisor", "retry",
+              `Waypoint « ${name} » échoué — nouvelle tentative`,
+              { waypoint: name, reason: initialReason },
+              "supervisor"
+            );
 
             try {
               return await this.processWaypoint(taskId, name);
             } catch (err) {
               const reason = err instanceof Error ? err.message : String(err);
               logger.error({ ...traceCtx(), waypoint: name, err: reason }, "Waypoint dégradé après retry");
+              this.pushEvent(taskId, "itinerary-supervisor", "degraded",
+                `Waypoint « ${name} » dégradé après retry — exclu du rapport`,
+                { waypoint: name, reason },
+                "supervisor"
+              );
               return { name, status: "degraded" as const, reason };
             }
           })
@@ -195,7 +215,14 @@ export class ItinerarySupervisor {
         const degraded = waypointResults.filter((w) => w.status === "degraded").map((w) => w.name);
         span.setAttribute("waypoints.degraded", degraded.length);
 
-        // 3. Boucle supervisée : génération + contrôle qualité + retry avec correction injectée
+        if (degraded.length > 0) {
+          this.decide(taskId,
+            `${degraded.length} waypoint(s) dégradé(s) : ${degraded.join(", ")} — rapport généré avec données partielles`,
+            { degraded, total: waypoints.length }
+          );
+        }
+
+        // 4. Boucle supervisée : génération + contrôle qualité + retry avec correction injectée
         let report = "";
         let qualityPassed = false;
         let retryReason: string | undefined;
@@ -203,6 +230,11 @@ export class ItinerarySupervisor {
         for (let attempt = 0; attempt < MAX_QUALITY_RETRIES; attempt++) {
           if (attempt > 0) {
             logger.warn({ ...traceCtx(), attempt, retryReason }, "Qualité insuffisante — retry rapport avec correction");
+            this.pushEvent(taskId, "itinerary-supervisor", "retry",
+              `Qualité insuffisante (tentative ${attempt}/${MAX_QUALITY_RETRIES}) — rapport régénéré avec correction injectée`,
+              { attempt, retryReason },
+              "supervisor"
+            );
           }
 
           const reportResult = await this.request<string>(
@@ -229,6 +261,10 @@ export class ItinerarySupervisor {
 
           if (qualityResult.output?.valid) {
             qualityPassed = true;
+            this.decide(taskId,
+              `Qualité validée à la tentative ${attempt + 1}/${MAX_QUALITY_RETRIES} — rapport accepté`,
+              { attempt: attempt + 1, details: qualityResult.output?.details }
+            );
             break;
           }
 
@@ -237,6 +273,10 @@ export class ItinerarySupervisor {
 
         if (!qualityPassed && report) {
           logger.warn({ ...traceCtx() }, "Rapport retourné sans validation qualité après 3 tentatives");
+          this.decide(taskId,
+            `Qualité non validée après ${MAX_QUALITY_RETRIES} tentatives — rapport retourné en l'état`,
+            { maxRetries: MAX_QUALITY_RETRIES, lastReason: retryReason }
+          );
         }
 
         logger.info({ ...traceCtx(), from: input.from, to: input.to, total: waypoints.length, degraded: degraded.length, qualityPassed, taskId }, "Itinéraire météo terminé");

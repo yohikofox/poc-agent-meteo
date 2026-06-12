@@ -30,7 +30,8 @@ interface ItineraryResult {
 interface TaskEvent {
   timestamp: string;
   agentId: string;
-  type: "started" | "completed" | "failed";
+  source?: "agent" | "orchestrator" | "supervisor" | "planner";
+  type: "started" | "completed" | "failed" | "decision" | "retry" | "degraded";
   message: string;
   output?: unknown;
 }
