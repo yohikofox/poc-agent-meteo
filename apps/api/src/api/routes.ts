@@ -38,23 +38,18 @@ export function createRoutes(
   });
 
   router.post("/weather-itinerary", async (ctx) => {
-    const body = ctx.request.body as { waypoints?: string[] };
-    if (!body.waypoints || body.waypoints.length < 2) {
+    const body = ctx.request.body as { from?: string; to?: string };
+    if (!body.from?.trim() || !body.to?.trim()) {
       ctx.status = 400;
-      ctx.body = { error: "Au moins 2 waypoints sont requis" };
-      return;
-    }
-    if (body.waypoints.length > 10) {
-      ctx.status = 400;
-      ctx.body = { error: "Maximum 10 waypoints" };
+      ctx.body = { error: "Les champs 'from' et 'to' sont requis" };
       return;
     }
 
     const traceId = crypto.randomUUID();
-    const task = taskStore.create({ waypoints: body.waypoints });
+    const task = taskStore.create({ from: body.from, to: body.to });
 
     try {
-      const output = await itinerarySupervisor.run({ waypoints: body.waypoints }, task.taskId, traceId);
+      const output = await itinerarySupervisor.run({ from: body.from.trim(), to: body.to.trim() }, task.taskId, traceId);
       taskStore.complete(task.taskId, output);
       ctx.body = { taskId: task.taskId, ...output };
     } catch (error) {

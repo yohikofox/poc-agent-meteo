@@ -35,6 +35,13 @@
     "type": "programmatic"
   },
   {
+    "id": "route-planner-agent",
+    "name": "Route Planner Agent",
+    "capabilities": ["itinerary.plan"],
+    "natsSubject": "agents.itinerary.plan",
+    "type": "llm-local"
+  },
+  {
     "id": "itinerary-report-writer-agent",
     "name": "Itinerary Report Writer Agent",
     "capabilities": ["itinerary.report.write"],

@@ -48,6 +48,8 @@ export interface WaypointResult {
 }
 
 export interface ItineraryOutput {
+  from: string;
+  to: string;
   waypoints: WaypointResult[];
   report: string;
   degraded: string[];
@@ -149,23 +151,35 @@ export class ItinerarySupervisor {
     };
   }
 
-  async run(input: { waypoints: string[] }, taskId: string, traceId: string): Promise<ItineraryOutput> {
+  async run(input: { from: string; to: string }, taskId: string, traceId: string): Promise<ItineraryOutput> {
     return tracer.startActiveSpan("itinerary.run", async (span) => {
-      span.setAttributes({ "waypoints.count": input.waypoints.length, "task.id": taskId });
-      logger.info({ ...traceCtx(), waypoints: input.waypoints, taskId }, "Itinéraire météo démarré");
+      span.setAttributes({ "route.from": input.from, "route.to": input.to, "task.id": taskId });
+      logger.info({ ...traceCtx(), from: input.from, to: input.to, taskId }, "Itinéraire météo démarré");
 
       try {
-        // 1. Traiter tous les waypoints en parallèle — allSettled ne fail-fast pas
+        // 1. Planifier l'itinéraire via le route-planner-agent (LLM)
+        const planResult = await this.request<string[]>(
+          taskId, "route-planner-agent", "Route Planner", "agents.itinerary.plan",
+          { from: input.from, to: input.to }
+        );
+        if (planResult.status !== "success" || !planResult.output?.length) {
+          throw new Error(planResult.reason ?? "Planification de l'itinéraire échouée");
+        }
+        const waypoints = planResult.output;
+        span.setAttribute("waypoints.count", waypoints.length);
+        logger.info({ ...traceCtx(), waypoints }, "Itinéraire planifié");
+
+        // 2. Traiter tous les waypoints en parallèle — allSettled ne fail-fast pas
         const settled = await Promise.allSettled(
-          input.waypoints.map((name) => this.processWaypoint(taskId, name))
+          waypoints.map((name) => this.processWaypoint(taskId, name))
         );
 
-        // 2. Retry unique par waypoint échoué, puis marquer dégradé
+        // 3. Retry unique par waypoint échoué, puis marquer dégradé
         const waypointResults: WaypointResult[] = await Promise.all(
           settled.map(async (result, i) => {
             if (result.status === "fulfilled") return result.value;
 
-            const name = input.waypoints[i];
+            const name = waypoints[i];
             logger.warn({ ...traceCtx(), waypoint: name, err: String(result.reason) }, "Waypoint échoué — retry");
 
             try {
@@ -225,10 +239,10 @@ export class ItinerarySupervisor {
           logger.warn({ ...traceCtx() }, "Rapport retourné sans validation qualité après 3 tentatives");
         }
 
-        logger.info({ ...traceCtx(), total: input.waypoints.length, degraded: degraded.length, qualityPassed, taskId }, "Itinéraire météo terminé");
+        logger.info({ ...traceCtx(), from: input.from, to: input.to, total: waypoints.length, degraded: degraded.length, qualityPassed, taskId }, "Itinéraire météo terminé");
         span.end();
 
-        return { waypoints: waypointResults, report, degraded, qualityPassed, traceId };
+        return { from: input.from, to: input.to, waypoints: waypointResults, report, degraded, qualityPassed, traceId };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         span.recordException(err instanceof Error ? err : new Error(message));

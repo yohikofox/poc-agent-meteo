@@ -24,6 +24,8 @@ interface WaypointResult {
 }
 
 interface ItineraryReportProps {
+  from: string;
+  to: string;
   waypoints: WaypointResult[];
   report: string;
   degraded: string[];
@@ -122,12 +124,10 @@ function WaypointStrip({ waypoints }: { waypoints: WaypointResult[] }) {
   );
 }
 
-export function ItineraryReport({ waypoints, report, degraded, qualityPassed, traceId }: ItineraryReportProps) {
+export function ItineraryReport({ from, to, waypoints, report, degraded, qualityPassed, traceId }: ItineraryReportProps) {
   const sections = parseReport(report);
   const resume = sections.find((s) => s.title.toLowerCase().includes("résumé"));
   const others = sections.filter((s) => !s.title.toLowerCase().includes("résumé"));
-  const origin = waypoints[0];
-  const destination = waypoints[waypoints.length - 1];
 
   return (
     <div className="space-y-4">
@@ -136,9 +136,9 @@ export function ItineraryReport({ waypoints, report, degraded, qualityPassed, tr
         <div>
           <h2 className="text-2xl font-bold flex items-center gap-2">
             <MapPin className="h-5 w-5 text-muted-foreground" />
-            {origin?.name}
+            {from}
             <span className="text-muted-foreground font-normal">→</span>
-            {destination?.name}
+            {to}
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">{waypoints.length} étapes</p>
         </div>
