@@ -89,6 +89,10 @@ export function createRoutes(
     }
   });
 
+  router.get("/planner/intents", (ctx) => {
+    ctx.body = WeatherPlannerExecutor.getAvailableIntents();
+  });
+
   router.get("/agents", (ctx) => {
     ctx.body = agentRegistry.getAll();
   });

@@ -6,11 +6,20 @@ import { TaskEvent } from "../types/task";
 import { WeatherReportOrchestrator, WeatherReportOutput } from "../orchestrator/WeatherReportOrchestrator";
 import { ItinerarySupervisor, ItineraryOutput } from "../supervisor/ItinerarySupervisor";
 import { logger, traceCtx } from "../logger";
+import plannerIntentsJson from "../registry/planner-intents.json";
 
 interface AgentResponse<T = unknown> {
   status: "success" | "failed";
   output?: T;
   reason?: string;
+}
+
+export interface PlannerIntent {
+  type: string;
+  label: string;
+  description: string;
+  inputSchema: string;
+  example: string;
 }
 
 export type WeatherIntent =
@@ -31,10 +40,13 @@ export interface IntentResult {
 
 export interface AskOutput {
   question: string;
+  availableIntents: PlannerIntent[];
   plan: WeatherPlan;
   results: IntentResult[];
   traceId: string;
 }
+
+const PLANNER_INTENTS: PlannerIntent[] = plannerIntentsJson as PlannerIntent[];
 
 const tracer = trace.getTracer("weather-planner-executor");
 
@@ -52,6 +64,10 @@ export class WeatherPlannerExecutor {
     private supervisor: ItinerarySupervisor
   ) {}
 
+  static getAvailableIntents(): PlannerIntent[] {
+    return PLANNER_INTENTS;
+  }
+
   private pushEvent(taskId: string, type: TaskEvent["type"], message: string, output?: unknown, source: TaskEvent["source"] = "planner") {
     this.taskStore.addEvent(taskId, {
       timestamp: new Date().toISOString(),
@@ -66,7 +82,9 @@ export class WeatherPlannerExecutor {
   private async callPlannerAgent(question: string, taskId: string): Promise<WeatherPlan> {
     return tracer.startActiveSpan("nats.request agents.weather.plan", async (span) => {
       span.setAttributes({ question, "task.id": taskId });
-      this.pushEvent(taskId, "started", "Analyse de la question par le planificateur LLM");
+      this.pushEvent(taskId, "started", "Analyse de la question par le planificateur LLM",
+        { injectedIntents: PLANNER_INTENTS.map((i) => i.type) }
+      );
 
       try {
         const h = natsHeaders();
@@ -74,7 +92,7 @@ export class WeatherPlannerExecutor {
 
         const msg = await this.nc.request(
           "agents.weather.plan",
-          this.sc.encode(JSON.stringify({ question })),
+          this.sc.encode(JSON.stringify({ question, intents: PLANNER_INTENTS })),
           { headers: h, timeout: 30_000 }
         );
         const result = JSON.parse(this.sc.decode(msg.data)) as AgentResponse<WeatherPlan>;
@@ -127,7 +145,7 @@ export class WeatherPlannerExecutor {
 
         this.pushEvent(taskId, "decision",
           `Plan LLM : ${plan.intents.length} intention(s) identifiée(s) — ${plan.intents.map((i) => this.intentLabel(i)).join(", ")}`,
-          { explanation: plan.explanation, intents: plan.intents, strategy: "parallel-allSettled" }
+          { explanation: plan.explanation, intents: plan.intents, availableIntents: PLANNER_INTENTS.map((i) => i.type), strategy: "parallel-allSettled" }
         );
 
         logger.info({ ...traceCtx(), intents: plan.intents }, "Plan météo — exécution parallèle");
@@ -154,7 +172,7 @@ export class WeatherPlannerExecutor {
         logger.info({ ...traceCtx(), total: results.length, failed, taskId }, "Exécution planifiée terminée");
         span.end();
 
-        return { question, plan, results, traceId };
+        return { question, availableIntents: PLANNER_INTENTS, plan, results, traceId };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         span.recordException(err instanceof Error ? err : new Error(message));

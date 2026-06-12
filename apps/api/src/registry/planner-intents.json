@@ -1,0 +1,16 @@
+[
+  {
+    "type": "weather-report",
+    "label": "Rapport météo",
+    "description": "Rapport météo complet pour une ville : géocodage, données Open-Meteo, analyse des risques, rédaction LLM, contrôle qualité",
+    "inputSchema": "{ location: string }",
+    "example": "Météo à Bordeaux"
+  },
+  {
+    "type": "itinerary",
+    "label": "Itinéraire météo",
+    "description": "Météo sur un trajet : étapes planifiées par LLM, données météo par étape en parallèle, rapport supervisé avec boucle qualité",
+    "inputSchema": "{ from: string, to: string }",
+    "example": "Trajet Paris → Nice"
+  }
+]

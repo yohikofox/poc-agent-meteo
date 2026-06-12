@@ -16,6 +16,14 @@ const natsGetter = {
   keys: (carrier: MsgHdrs) => [...carrier.keys()],
 };
 
+interface PlannerIntent {
+  type: string;
+  label: string;
+  description: string;
+  inputSchema: string;
+  example: string;
+}
+
 export type WeatherIntent =
   | { type: "weather-report"; location: string }
   | { type: "itinerary"; from: string; to: string };
@@ -25,26 +33,34 @@ export interface WeatherPlan {
   intents: WeatherIntent[];
 }
 
-function buildPrompt(question: string): string {
-  return `Tu es un assistant spécialisé en météo. Analyse la question et extrais les intentions météo.
+function buildPrompt(question: string, intents: PlannerIntent[]): string {
+  const intentList = intents
+    .map((i) => `- type "${i.type}" : ${i.description}\n  paramètres requis : ${i.inputSchema}\n  exemple : "${i.example}"`)
+    .join("\n\n");
+
+  const typeList = intents.map((i) => `"${i.type}"`).join(" ou ");
+
+  return `Tu es un assistant spécialisé en météo. Tu as accès aux fonctionnalités suivantes :
+
+${intentList}
+
+Analyse la question et sélectionne les fonctionnalités appropriées parmi celles listées ci-dessus.
 
 QUESTION : "${question}"
 
-Réponds UNIQUEMENT avec un objet JSON valide, sans markdown ni balises, avec cette structure exacte :
+Réponds UNIQUEMENT avec un objet JSON valide, sans markdown ni balises :
 {
   "explanation": "Ce que l'utilisateur veut savoir (1-2 phrases en français)",
   "intents": [
-    { "type": "weather-report", "location": "NomVille" },
-    { "type": "itinerary", "from": "VilleDepart", "to": "VilleArrivee" }
+    // utilise UNIQUEMENT les types : ${typeList}
   ]
 }
 
 Règles strictes :
-- Si la question mentionne un trajet, un voyage ou un itinéraire entre deux villes → type "itinerary"
-- Si la question mentionne une ou plusieurs villes isolées → type "weather-report" pour chacune
+- Utilise UNIQUEMENT les types listés ci-dessus
 - Maximum 3 intentions au total
 - Noms de villes en français si possible
-- Réponds UNIQUEMENT avec le JSON, aucun autre texte avant ou après`;
+- Réponds UNIQUEMENT avec le JSON, aucun autre texte`;
 }
 
 function parsePlan(raw: string): WeatherPlan {
@@ -79,11 +95,12 @@ async function main() {
     await tracer.startActiveSpan("weather.plan", {}, parentCtx, async (span) => {
       let result: AgentResponse<WeatherPlan>;
       try {
-        const { question } = JSON.parse(sc.decode(msg.data)) as { question: string };
+        const { question, intents = [] } = JSON.parse(sc.decode(msg.data)) as { question: string; intents?: PlannerIntent[] };
         span.setAttribute("question", question);
-        logger.info({ ...traceCtx(), question }, "Planification de la question météo");
+        span.setAttribute("intents.available", intents.map((i) => i.type).join(","));
+        logger.info({ ...traceCtx(), question, availableIntents: intents.map((i) => i.type) }, "Planification de la question météo");
 
-        const raw = await ollama.generate(buildPrompt(question));
+        const raw = await ollama.generate(buildPrompt(question, intents));
         const plan = parsePlan(raw);
 
         span.setAttribute("intents.count", plan.intents.length);

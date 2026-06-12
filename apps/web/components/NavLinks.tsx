@@ -7,6 +7,7 @@ const LINKS = [
   { href: "/",           label: "Rapport météo" },
   { href: "/itinerary",  label: "Itinéraire" },
   { href: "/ask",        label: "Question libre" },
+  { href: "/planner",    label: "Planner" },
 ];
 
 export function NavLinks() {
