@@ -4,7 +4,7 @@
 
 - [x] Architecture monorepo (`apps/api`, `apps/agents`, `apps/web`)
 - [x] 5 agents autonomes via NATS request/reply
-- [x] Supervisor avec propagation de contexte de trace
+- [x] Orchestrator séquentiel avec propagation de contexte de trace
 - [x] Observabilité : OpenTelemetry + Jaeger + Pino + Loki + Grafana
 
 ---
@@ -23,15 +23,54 @@ L'UI s'anime au fur et à mesure que chaque agent répond.
 
 ---
 
-### Health check des agents
+### Health check des agents (observation)
 **Priorité : haute — indispensable en conditions réelles**
 
-Chaque agent publie un heartbeat périodique. Le superviseur détecte les agents
+Chaque agent publie un heartbeat périodique. L'orchestrator peut détecter les agents
 silencieux avant de leur envoyer une requête.
+
+> Concept : **observation passive** — on sait si un agent est UP ou DOWN, mais on ne réagit pas encore automatiquement.
 
 - [ ] Heartbeat NATS sur `agents.health.{id}` toutes les 5s
 - [ ] Endpoint `GET /agents/health` sur l'API
 - [ ] Indicateurs UP/DOWN dans l'UI
+
+---
+
+### Supervisor actif (retry + fallback)
+**Priorité : haute — distingue l'observation de la réaction**
+
+Le health check observe. Le supervisor *réagit* : si le `report-writer-agent` ne répond pas,
+il relance, tente un fallback ou dégrade gracieusement.
+
+> Concept : **supervision active** — distinct de l'orchestration (qui séquence) et de l'observation (qui surveille).
+> Exemple fonctionnel : Ollama est surchargé, le premier appel timeout. Le supervisor relance jusqu'à 3 fois
+> avec backoff exponentiel. Si toujours en échec, il retourne un rapport partiel (données météo + risques)
+> sans la narration LLM plutôt qu'une erreur 500.
+
+- [ ] Retry avec backoff exponentiel dans `WeatherReportOrchestrator.request()`
+- [ ] Fallback configurable par agent (ex: rapport tronqué si `report-writer` indisponible)
+- [ ] Circuit breaker : après N échecs consécutifs, ne plus appeler l'agent pendant X secondes
+- [ ] Exposer l'état du circuit breaker dans `GET /agents/health`
+
+---
+
+### Fan-out Orchestrator (agrégation multi-sources)
+**Priorité : moyenne — démontre la valeur du pattern parallèle**
+
+Appeler plusieurs sources météo en parallèle et agréger les résultats, au lieu de dépendre
+d'une seule source. Démonstration du pattern fan-out / reduce.
+
+> Concept : **orchestration parallèle sans adhérence** — aucun agent n'attend un autre,
+> tous partent en même temps, l'orchestrator collecte et tranche.
+> Exemple fonctionnel : Open-Meteo, un agent simulant Météo France et un troisième fournisseur
+> sont interrogés simultanément. L'orchestrator retient la médiane de température et la
+> probabilité de pluie maximale (stratégie pessimiste).
+
+- [ ] Créer `weather-fetch-alt-agent` (même interface, source différente ou simulée)
+- [ ] Ajouter `FanOutOrchestrator` qui appelle les N agents weather-fetch en parallèle via `nc.request()`
+- [ ] Stratégie d'agrégation configurable (médiane, vote majoritaire, pessimiste)
+- [ ] Comparer la latence : fan-out (max des N) vs séquentiel (somme des N)
 
 ---
 
@@ -59,20 +98,27 @@ NATS distribue nativement les messages sur plusieurs instances d'un même agent
 
 ---
 
-### Orchestration LLM dynamique (remplacement de l'orchestrator)
+### Planner LLM + Executor (orchestration dynamique)
 **Priorité : exploratoire — prochaine frontière agentique**
 
-Remplacer le `WeatherReportOrchestrator` déterministe par un LLM planificateur
-qui décide dynamiquement quels agents appeler et dans quel ordre selon la requête.
-Les agents NATS deviennent des *tools* invocables par le LLM.
+Introduire le split **Planner / Executor** : un LLM raisonne sur *quels* agents appeler
+et dans *quel ordre* selon la requête. L'Executor se charge d'appeler les agents NATS
+selon le plan produit, sans logique de décision.
 
-Ce pattern est celui de LangGraph / AutoGen : l'orchestration sort du code
-pour entrer dans le raisonnement du modèle.
+> Concept : **séparation décision / exécution**.
+> - `Planner` (LLM) : reçoit "Dois-je partir en rando ce weekend ?" et décide
+>   `[geocoding, weather-fetch ×2 jours, weather-risk]` — pas de `report-writer` ni `quality-check`.
+> - `Executor` : reçoit le plan, appelle les agents NATS dans l'ordre, retourne les résultats.
+> - Même requête simple "météo à Paris" → plan différent → appels différents.
+>
+> L'`WeatherReportOrchestrator` actuel fait les deux à la fois (plan figé dans le code + exécution).
+> Ce pattern les sépare, ce qui permet de changer le plan sans toucher à l'exécution.
 
-- [ ] Exposer chaque agent NATS comme un tool (nom, description, schéma d'entrée/sortie)
-- [ ] Implémenter un LLM planner (Ollama + modèle function-calling, ex: `llama3.1:8b`)
-- [ ] Le planner reçoit la requête, sélectionne et séquence les agents, agrège les résultats
-- [ ] Comparer les comportements : orchestrator déterministe vs planner LLM
+- [ ] Définir le schéma d'un plan : `[{ agentId, subject, inputFrom }]`
+- [ ] Implémenter `PlanExecutor` : prend un plan, appelle les agents NATS en séquence
+- [ ] Exposer chaque agent comme un tool LLM (nom, description, schéma entrée/sortie)
+- [ ] Implémenter `LLMPlanner` (Ollama + modèle function-calling, ex: `llama3.1:8b`)
+- [ ] Comparer les plans générés : orchestrator déterministe vs planner LLM sur différentes requêtes
 
 ---
 
