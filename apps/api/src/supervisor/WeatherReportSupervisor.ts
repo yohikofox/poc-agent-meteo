@@ -1,6 +1,9 @@
-import { NatsConnection, StringCodec } from "nats";
+import { NatsConnection, StringCodec, headers as natsHeaders } from "nats";
+import type { MsgHdrs } from "nats";
+import { context, propagation, trace, SpanStatusCode } from "@opentelemetry/api";
 import { TaskStore } from "../harness/TaskStore";
 import { TaskEvent } from "../types/task";
+import { logger, traceCtx } from "../logger";
 
 interface AgentResponse<T = unknown> {
   status: "success" | "failed";
@@ -37,6 +40,12 @@ export interface WeatherReportOutput {
   traceId: string;
 }
 
+const tracer = trace.getTracer("supervisor");
+
+const natsHeaderSetter = {
+  set: (carrier: MsgHdrs, key: string, value: string) => carrier.set(key, value),
+};
+
 export class WeatherReportSupervisor {
   private sc = StringCodec();
 
@@ -49,97 +58,100 @@ export class WeatherReportSupervisor {
     subject: string,
     payload: unknown
   ): Promise<AgentResponse<T>> {
-    this.pushEvent(taskId, agentId, "started", `${agentName} démarré`);
+    return tracer.startActiveSpan(`nats.request ${subject}`, async (span) => {
+      span.setAttributes({ "nats.subject": subject, "agent.id": agentId, "task.id": taskId });
+      this.pushEvent(taskId, agentId, "started", `${agentName} démarré`);
 
-    try {
-      const msg = await this.nc.request(
-        subject,
-        this.sc.encode(JSON.stringify(payload)),
-        { timeout: 30_000 }
-      );
-      const result = JSON.parse(this.sc.decode(msg.data)) as AgentResponse<T>;
+      try {
+        // Propager le contexte de trace dans les headers NATS
+        const h = natsHeaders();
+        propagation.inject(context.active(), h, natsHeaderSetter);
 
-      this.pushEvent(
-        taskId, agentId,
-        result.status === "success" ? "completed" : "failed",
-        result.reason ?? `${agentName} terminé`,
-        result.output
-      );
-      return result;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      this.pushEvent(taskId, agentId, "failed", message);
-      throw new Error(`${agentName} — ${message}`);
-    }
-  }
+        const msg = await this.nc.request(
+          subject,
+          this.sc.encode(JSON.stringify(payload)),
+          { headers: h, timeout: 30_000 }
+        );
+        const result = JSON.parse(this.sc.decode(msg.data)) as AgentResponse<T>;
 
-  private pushEvent(
-    taskId: string,
-    agentId: string,
-    type: TaskEvent["type"],
-    message: string,
-    output?: unknown
-  ) {
-    this.taskStore.addEvent(taskId, {
-      timestamp: new Date().toISOString(),
-      agentId,
-      type,
-      message,
-      output,
+        if (result.status === "failed") {
+          span.setStatus({ code: SpanStatusCode.ERROR, message: result.reason });
+          logger.warn({ ...traceCtx(), agentId, reason: result.reason }, `${agentName} échoué`);
+        } else {
+          logger.info({ ...traceCtx(), agentId }, `${agentName} terminé`);
+        }
+
+        this.pushEvent(
+          taskId, agentId,
+          result.status === "success" ? "completed" : "failed",
+          result.reason ?? `${agentName} terminé`,
+          result.output
+        );
+        span.end();
+        return result;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        span.recordException(err instanceof Error ? err : new Error(message));
+        span.setStatus({ code: SpanStatusCode.ERROR, message });
+        span.end();
+        logger.error({ ...traceCtx(), agentId, err: message }, `${agentName} erreur`);
+        this.pushEvent(taskId, agentId, "failed", message);
+        throw new Error(`${agentName} — ${message}`);
+      }
     });
   }
 
-  async run(
-    input: { location: string },
-    taskId: string,
-    traceId: string
-  ): Promise<WeatherReportOutput> {
-    // 1. Résoudre la localisation
-    const geoResult = await this.request<GeoLocation>(
-      taskId, "geocoding-agent", "Geocoding Agent",
-      "agents.location.resolve", { name: input.location }
-    );
-    if (geoResult.status !== "success" || !geoResult.output) {
-      throw new Error(geoResult.reason ?? "Géocodage échoué");
-    }
+  private pushEvent(taskId: string, agentId: string, type: TaskEvent["type"], message: string, output?: unknown) {
+    this.taskStore.addEvent(taskId, { timestamp: new Date().toISOString(), agentId, type, message, output });
+  }
 
-    // 2. Récupérer la météo
-    const weatherResult = await this.request<WeatherData>(
-      taskId, "weather-fetch-agent", "Weather Fetch Agent",
-      "agents.weather.fetch", geoResult.output
-    );
-    if (weatherResult.status !== "success" || !weatherResult.output) {
-      throw new Error(weatherResult.reason ?? "Récupération météo échouée");
-    }
+  async run(input: { location: string }, taskId: string, traceId: string): Promise<WeatherReportOutput> {
+    return tracer.startActiveSpan("weather-report.run", async (span) => {
+      span.setAttributes({ "location": input.location, "task.id": taskId });
+      logger.info({ ...traceCtx(), location: input.location, taskId }, "Rapport météo démarré");
 
-    // 3. Analyser les risques
-    const riskResult = await this.request<WeatherRisk[]>(
-      taskId, "weather-risk-analysis-agent", "Weather Risk Analysis Agent",
-      "agents.weather.risk", weatherResult.output
-    );
+      try {
+        const geoResult = await this.request<GeoLocation>(
+          taskId, "geocoding-agent", "Geocoding Agent", "agents.location.resolve", { name: input.location }
+        );
+        if (geoResult.status !== "success" || !geoResult.output) throw new Error(geoResult.reason ?? "Géocodage échoué");
 
-    // 4. Générer le rapport
-    const reportResult = await this.request<string>(
-      taskId, "weather-report-writer-agent", "Weather Report Writer Agent",
-      "agents.report.write", weatherResult.output
-    );
-    if (reportResult.status !== "success" || !reportResult.output) {
-      throw new Error(reportResult.reason ?? "Génération du rapport échouée");
-    }
+        const weatherResult = await this.request<WeatherData>(
+          taskId, "weather-fetch-agent", "Weather Fetch Agent", "agents.weather.fetch", geoResult.output
+        );
+        if (weatherResult.status !== "success" || !weatherResult.output) throw new Error(weatherResult.reason ?? "Récupération météo échouée");
 
-    // 5. Contrôle qualité
-    await this.request(
-      taskId, "quality-check-agent", "Quality Check Agent",
-      "agents.report.check", reportResult.output
-    );
+        const riskResult = await this.request<WeatherRisk[]>(
+          taskId, "weather-risk-analysis-agent", "Weather Risk Analysis Agent", "agents.weather.risk", weatherResult.output
+        );
 
-    const { temperature, rainProbability, wind, humidity } = weatherResult.output;
-    return {
-      location: geoResult.output,
-      weatherData: { temperature, rainProbability, wind, humidity },
-      report: reportResult.output,
-      risks: (riskResult.output ?? []).map((r) => r.type),
-      traceId,
-    };
+        const reportResult = await this.request<string>(
+          taskId, "weather-report-writer-agent", "Weather Report Writer Agent", "agents.report.write", weatherResult.output
+        );
+        if (reportResult.status !== "success" || !reportResult.output) throw new Error(reportResult.reason ?? "Génération du rapport échouée");
+
+        await this.request(
+          taskId, "quality-check-agent", "Quality Check Agent", "agents.report.check", reportResult.output
+        );
+
+        logger.info({ ...traceCtx(), location: input.location, taskId }, "Rapport météo terminé");
+        span.end();
+
+        const { temperature, rainProbability, wind, humidity } = weatherResult.output;
+        return {
+          location: geoResult.output,
+          weatherData: { temperature, rainProbability, wind, humidity },
+          report: reportResult.output,
+          risks: (riskResult.output ?? []).map((r) => r.type),
+          traceId,
+        };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        span.recordException(err instanceof Error ? err : new Error(message));
+        span.setStatus({ code: SpanStatusCode.ERROR, message });
+        span.end();
+        throw err;
+      }
+    });
   }
 }

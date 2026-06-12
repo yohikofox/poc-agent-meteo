@@ -1,3 +1,4 @@
+import "./tracing"; // doit rester en premier
 import "dotenv/config";
 import { connect } from "nats";
 import { TaskStore } from "./harness/TaskStore";
@@ -5,13 +6,14 @@ import { AgentRegistry } from "./registry/AgentRegistry";
 import { WeatherReportSupervisor } from "./supervisor/WeatherReportSupervisor";
 import { createRoutes } from "./api/routes";
 import { createServer } from "./api/server";
+import { logger } from "./logger";
 
 const PORT = parseInt(process.env.PORT ?? "3000", 10);
 const NATS_URL = process.env.NATS_URL ?? "nats://localhost:4222";
 
 async function main() {
   const nc = await connect({ servers: NATS_URL });
-  console.log(`NATS connecté : ${NATS_URL}`);
+  logger.info({ natsUrl: NATS_URL }, "NATS connecté");
 
   const taskStore = new TaskStore();
   const agentRegistry = new AgentRegistry();
@@ -21,8 +23,7 @@ async function main() {
   const app = createServer(router);
 
   app.listen(PORT, () => {
-    console.log(`API démarrée sur http://localhost:${PORT}`);
-    console.log(`Routes : POST /weather-report · GET /agents · GET /tasks/:id/events`);
+    logger.info({ port: PORT }, "API démarrée");
   });
 
   process.on("SIGTERM", async () => {
@@ -32,6 +33,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error("Erreur fatale :", err);
+  logger.error({ err }, "Erreur fatale");
   process.exit(1);
 });
